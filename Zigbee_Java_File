@@ -1,0 +1,154 @@
+package serialcomm;
+
+import gnu.io.*;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.PrintStream;
+import java.util.Enumeration;
+import java.util.TooManyListenersException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.nio.*;
+import java.util.*;
+
+public class SerialComm implements Runnable, SerialPortEventListener {
+    static CommPortIdentifier portId;
+    static Enumeration portList;
+    byte[] readBuffer = new byte[40];
+    int numBytes = 0  ;
+    
+    int[] FirstMeasurement = new int[200];
+    int[] SecondMeasurement = new int[200];
+    int[] CombinedMeasurement = new int[200];
+    
+    int MeasurementNumber = 0;    
+    InputStream inputStream;
+    SerialPort serialPort;
+    Thread readThread;
+    
+    public static void main(String[] args) throws IOException {
+        portList = CommPortIdentifier.getPortIdentifiers();
+        while (portList.hasMoreElements()) {
+            portId = (CommPortIdentifier) portList.nextElement();
+            if (portId.getPortType() == CommPortIdentifier.PORT_SERIAL) {
+                 if (portId.getName().equals("COM1")) {
+                    SerialComm reader = new SerialComm();              
+                }
+            }
+        }
+    }
+    private int n;
+    public SerialComm() throws IOException 
+    {        
+      Read();         
+    }       
+public void Read ()
+    {
+      try {
+            serialPort = (SerialPort) portId.open("SerialCommApp", 1000);
+        } catch (PortInUseException e){ 
+        }
+        try {
+            inputStream = serialPort.getInputStream();
+        } catch (IOException e) {System.out.println(e);}
+	try {
+            serialPort.addEventListener(this);
+	} catch (TooManyListenersException e) {System.out.println(e);}
+        serialPort.notifyOnDataAvailable(true);
+        try {
+            serialPort.setSerialPortParams(9600,
+                SerialPort.DATABITS_8,
+                SerialPort.STOPBITS_1,
+                SerialPort.PARITY_NONE);
+        } catch (UnsupportedCommOperationException e) {System.out.println(e);}           
+    }    
+    public void run() {
+        try {
+            Thread.sleep(20000);
+        } catch (InterruptedException e) {System.out.println(e);}
+    }
+    public void serialEvent(SerialPortEvent event) {
+        switch(event.getEventType()) {
+        case SerialPortEvent.BI:
+        case SerialPortEvent.OE:
+        case SerialPortEvent.FE:
+        case SerialPortEvent.PE:
+        case SerialPortEvent.CD:
+        case SerialPortEvent.CTS:
+        case SerialPortEvent.DSR:
+        case SerialPortEvent.RI:
+        case SerialPortEvent.OUTPUT_BUFFER_EMPTY:
+            break;
+        case SerialPortEvent.DATA_AVAILABLE:      
+             int count = 0;       
+            try {                      
+                while ((inputStream.available() > -1)) {                   
+                 numBytes  = inputStream.read();        
+                   count++;     
+                   if (count == 20)
+                    {      
+                        FirstMeasurement[MeasurementNumber] = numBytes;
+                    }
+                     if(count == 21)
+                    {
+                        SecondMeasurement[MeasurementNumber] = numBytes;                       
+                    }
+                     if (count == 22)
+                     {
+                     MeasurementNumber++;
+                     count = 0;
+                     numBytes = 0;                   
+                     }   
+                     if (MeasurementNumber == 200)
+                     {
+                         Combine();     
+                     }               
+                 }  
+            } catch (IOException e) {System.out.println(e);}
+            break;
+        }       
+    }
+    public void Stop() throws IOException
+    {
+        System.out.println("\nHello");
+    }   
+    public void Save() throws IOException
+    {
+  FileWriter savefile = new FileWriter("FirstMeasurement.txt");
+  FileWriter savefile2 = new FileWriter("SecondMeasurement.txt");
+  FileWriter savefile3 = new FileWriter("CombinedMeasurement.txt");
+  for (int i=0; i<200; i++) {
+    savefile.write(String.format("%d\r\n", FirstMeasurement[i]));
+  }
+  savefile.write('\n');
+  savefile.close();
+    for (int i=0; i<200; i++) {
+    savefile2.write(String.format("%d\r\n", SecondMeasurement[i]));
+  }
+  savefile2.write('\n');
+  savefile2.close();
+  for (int i=0; i<200; i++) {
+    savefile3.write(String.format("%d\r\n", CombinedMeasurement[i]));
+  }
+  savefile3.write('\n');
+  savefile3.close();
+    }   
+    public void ArrayBuffer() throws IOException
+    {
+    ByteBuffer DataIn = ByteBuffer.allocate(20);
+    int size = DataIn.capacity();
+    int position = DataIn.position();
+    DataIn.putInt(numBytes);    
+    System.out.printf("%X",DataIn);
+    }  
+    public void Combine () throws IOException
+    {                  
+        for(int i = 0; i <200;i++)
+        {     
+         CombinedMeasurement[i] =  ( (0x0f & FirstMeasurement[i])<< 8) |  (  SecondMeasurement[i]  );   
+        }       
+    Save();
+    System.exit(n);    
+    }    
+}
